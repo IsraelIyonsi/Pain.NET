@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>Pain.Net</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Israel Iyonsi</Authors>
+    <Description>Maintained, tested, zero-dependency ISO 20022 SEPA payment-initiation library for .NET. Writes pain.001.001.09 (customer credit transfer) and pain.008.001.08 (customer direct debit), reads pain.001.001.09 back, and auto-computes and validates NbOfTxs and CtrlSum so silent totals bugs cannot ship.</Description>
+    <PackageTags>iso20022;sepa;pain001;pain008;credit-transfer;direct-debit;payments;xml;fintech;payment-initiation;sepawriter</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/IsraelIyonsi/Pain.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Deterministic>true</Deterministic>
+    <RootNamespace>PainNet</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
