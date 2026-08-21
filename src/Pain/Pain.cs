@@ -7,9 +7,8 @@ using System.Xml.Linq;
 namespace PainNet;
 
 /// <summary>
-/// Writes ISO 20022 SEPA payment-initiation XML for pain.001.001.09
-/// (customer credit transfer) and pain.008.001.08 (customer direct debit), and reads
-/// pain.001.001.09 back into the typed model.
+/// Reads and writes ISO 20022 SEPA payment-initiation XML for both pain.001.001.09
+/// (customer credit transfer) and pain.008.001.08 (customer direct debit).
 /// The writer always computes <c>NbOfTxs</c> and <c>CtrlSum</c> from the transactions
 /// themselves, and the reader re-validates them, so a caller-supplied or corrupted total
 /// can never pass silently.
@@ -85,10 +84,11 @@ public static class Pain
     /// taken from the caller.
     /// </summary>
     /// <param name="debit">The direct debit to serialize.</param>
+    /// <param name="schemeNameForm">Whether the creditor scheme name is written as <c>SchmeNm/Prtry</c> (default) or <c>SchmeNm/Cd</c>.</param>
     /// <returns>The pain.008.001.08 document as an XML string.</returns>
     /// <exception cref="ArgumentNullException">The debit is null.</exception>
     /// <exception cref="ArgumentException">A required field is empty, there are no transactions, or a transaction has a non-positive amount or more than two decimal places.</exception>
-    public static string WriteDirectDebit(DirectDebit debit)
+    public static string WriteDirectDebit(DirectDebit debit, SchemeNameForm schemeNameForm = SchemeNameForm.Proprietary)
     {
         ArgumentNullException.ThrowIfNull(debit);
         Require(!string.IsNullOrWhiteSpace(debit.MessageId), "MessageId must not be empty.");
@@ -122,7 +122,7 @@ public static class Pain
             Account(ns, Names.CreditorAccount, debit.CreditorIban),
             Agent(ns, Names.CreditorAgent, debit.CreditorBic),
             new XElement(ns + Names.ChargeBearer, Names.ChargeBearerSlev),
-            CreditorSchemeId(ns, debit.CreditorSchemeId));
+            CreditorSchemeId(ns, debit.CreditorSchemeId, schemeNameForm));
 
         foreach (DirectDebitTransaction tx in debit.Transactions)
         {
@@ -200,7 +200,7 @@ public static class Pain
                 paymentTransactions.Add(new CreditTransferTransaction(
                     Value(Child(info, ns + Names.PaymentId), ns + Names.EndToEndId),
                     Formats.ParseMoney(amount.Value),
-                    (string?)amount.Attribute(Names.Currency) ?? string.Empty,
+                    RequiredCurrency(amount),
                     new Party(Value(Child(info, ns + Names.Creditor), ns + Names.Name)),
                     Iban(info, ns, Names.CreditorAccount),
                     RequiredBic(info, ns, Names.CreditorAgent),
@@ -239,6 +239,100 @@ public static class Pain
         }
     }
 
+    /// <summary>
+    /// Parses pain.008.001.08 XML back into a <see cref="DirectDebit"/>, re-validating
+    /// that the document's stated <c>NbOfTxs</c> and <c>CtrlSum</c> match the transactions
+    /// actually present, at both group-header and per-<c>PmtInf</c> level.
+    /// </summary>
+    /// <param name="xml">The pain.008.001.08 document.</param>
+    /// <returns>The parsed direct debit.</returns>
+    /// <exception cref="ArgumentNullException">The xml is null.</exception>
+    /// <exception cref="PainValidationException">The document is malformed, uses the wrong namespace, omits a required element or currency, or its stated totals disagree with its transactions.</exception>
+    public static DirectDebit ReadDirectDebit(string xml)
+    {
+        ArgumentNullException.ThrowIfNull(xml);
+
+        XDocument doc = ParseDocument(xml);
+        XNamespace ns = Names.DirectDebitNs;
+        XElement root = doc.Root ?? throw new PainValidationException("Document has no root element.");
+        RequireValid(root.Name == ns + Names.Document,
+            $"Root element must be {Names.Document} in namespace {Names.DirectDebitNamespaceUri}.");
+
+        XElement initiation = Child(root, ns + Names.CustomerDirectDebitInitiation);
+        XElement header = Child(initiation, ns + Names.GroupHeader);
+
+        string messageId = Value(header, ns + Names.MessageId);
+        DateTimeOffset creationDateTime = DateTimeOffset.ParseExact(
+            Value(header, ns + Names.CreationDateTime),
+            Formats.DateTimeReadFormats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal);
+
+        List<DirectDebitTransaction> transactions = new();
+        Party? creditor = null;
+        string creditorIban = string.Empty;
+        string creditorBic = string.Empty;
+        string creditorSchemeId = string.Empty;
+
+        foreach (XElement payment in initiation.Elements(ns + Names.PaymentInformation))
+        {
+            creditor ??= new Party(Value(Child(payment, ns + Names.Creditor), ns + Names.Name));
+            if (creditorIban.Length == 0)
+            {
+                creditorIban = Iban(payment, ns, Names.CreditorAccount);
+                creditorBic = RequiredBic(payment, ns, Names.CreditorAgent);
+                creditorSchemeId = SchemeId(payment, ns);
+            }
+
+            List<DirectDebitTransaction> paymentTransactions = new();
+            foreach (XElement info in payment.Elements(ns + Names.DirectDebitTransactionInfo))
+            {
+                XElement amount = Child(info, ns + Names.InstructedAmount);
+                XElement mandate = Child(Child(info, ns + Names.DirectDebitTransaction), ns + Names.MandateRelatedInfo);
+                paymentTransactions.Add(new DirectDebitTransaction(
+                    Value(Child(info, ns + Names.PaymentId), ns + Names.EndToEndId),
+                    Formats.ParseMoney(amount.Value),
+                    RequiredCurrency(amount),
+                    new Party(Value(Child(info, ns + Names.Debtor), ns + Names.Name)),
+                    Iban(info, ns, Names.DebtorAccount),
+                    RequiredBic(info, ns, Names.DebtorAgent),
+                    Value(mandate, ns + Names.MandateId),
+                    Formats.ParseDate(Value(mandate, ns + Names.DateOfSignature)),
+                    OptionalRemittance(info, ns)));
+            }
+
+            ValidateTotals(payment, ns, paymentTransactions.Count, SumOf(paymentTransactions.Select(t => t.Amount)), Names.PaymentInformation);
+            transactions.AddRange(paymentTransactions);
+        }
+
+        RequireValid(creditor is not null, "Document contains no PmtInf block.");
+
+        ValidateTotals(header, ns, transactions.Count, SumOf(transactions.Select(t => t.Amount)), Names.GroupHeader);
+
+        return new DirectDebit(messageId, creationDateTime, creditor!, creditorIban, creditorBic, creditorSchemeId, transactions);
+    }
+
+    /// <summary>
+    /// Attempts to parse pain.008.001.08 XML into a <see cref="DirectDebit"/>, returning
+    /// <see langword="false"/> instead of throwing on malformed input or a totals mismatch.
+    /// </summary>
+    /// <param name="xml">The pain.008.001.08 document.</param>
+    /// <param name="debit">The parsed direct debit when parsing succeeds; otherwise <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> if parsing and validation succeeded; otherwise <see langword="false"/>.</returns>
+    public static bool TryReadDirectDebit(string xml, out DirectDebit? debit)
+    {
+        try
+        {
+            debit = ReadDirectDebit(xml);
+            return true;
+        }
+        catch (Exception e) when (e is PainValidationException or ArgumentException or FormatException or OverflowException)
+        {
+            debit = null;
+            return false;
+        }
+    }
+
     private static XElement GroupHeader(XNamespace ns, string messageId, DateTimeOffset creationDateTime, int count, decimal controlSum, string initiatingPartyName) =>
         new(ns + Names.GroupHeader,
             new XElement(ns + Names.MessageId, messageId),
@@ -257,14 +351,17 @@ public static class Pain
             new XElement(ns + Names.FinancialInstitutionId,
                 new XElement(ns + Names.BicFi, bic)));
 
-    private static XElement CreditorSchemeId(XNamespace ns, string schemeId) =>
+    private static XElement CreditorSchemeId(XNamespace ns, string schemeId, SchemeNameForm schemeNameForm) =>
         new(ns + Names.CreditorSchemeId,
             new XElement(ns + Names.Identification,
                 new XElement(ns + Names.PrivateId,
                     new XElement(ns + Names.Other,
                         new XElement(ns + Names.Identification, schemeId),
                         new XElement(ns + Names.SchemeName,
-                            new XElement(ns + Names.Proprietary, Names.ServiceLevelSepa))))));
+                            new XElement(ns + SchemeNameElement(schemeNameForm), Names.ServiceLevelSepa))))));
+
+    private static string SchemeNameElement(SchemeNameForm schemeNameForm) =>
+        schemeNameForm == SchemeNameForm.Code ? Names.Code : Names.Proprietary;
 
     private static XElement? Remittance(XNamespace ns, string? remittanceInfo) =>
         string.IsNullOrWhiteSpace(remittanceInfo)
@@ -300,6 +397,19 @@ public static class Pain
 
     private static string RequiredBic(XElement parent, XNamespace ns, string agentElement) =>
         Value(Child(Child(parent, ns + agentElement), ns + Names.FinancialInstitutionId), ns + Names.BicFi);
+
+    private static string SchemeId(XElement parent, XNamespace ns) =>
+        Value(
+            Child(Child(Child(Child(parent, ns + Names.CreditorSchemeId), ns + Names.Identification), ns + Names.PrivateId), ns + Names.Other),
+            ns + Names.Identification);
+
+    private static string RequiredCurrency(XElement amount)
+    {
+        XAttribute? currency = amount.Attribute(Names.Currency);
+        RequireValid(currency is not null,
+            $"Missing required {Names.Currency} attribute on {amount.Name.LocalName}.");
+        return currency!.Value;
+    }
 
     private static string? OptionalRemittance(XElement parent, XNamespace ns) =>
         parent.Element(ns + Names.RemittanceInfo)?.Element(ns + Names.Unstructured)?.Value;

@@ -52,6 +52,27 @@ public class DirectDebitWriterTests
     }
 
     [Fact]
+    public void Default_scheme_name_form_emits_proprietary_sepa()
+    {
+        XDocument doc = XDocument.Parse(global::PainNet.Pain.WriteDirectDebit(Fixtures.TwoTransactionDirectDebit()));
+        XElement scheme = doc.Descendants(Ns + "CdtrSchmeId").Single().Descendants(Ns + "SchmeNm").Single();
+
+        Assert.Equal("SEPA", scheme.Element(Ns + "Prtry")!.Value);
+        Assert.Null(scheme.Element(Ns + "Cd"));
+    }
+
+    [Fact]
+    public void Code_scheme_name_form_emits_code_sepa()
+    {
+        XDocument doc = XDocument.Parse(
+            global::PainNet.Pain.WriteDirectDebit(Fixtures.TwoTransactionDirectDebit(), SchemeNameForm.Code));
+        XElement scheme = doc.Descendants(Ns + "CdtrSchmeId").Single().Descendants(Ns + "SchmeNm").Single();
+
+        Assert.Equal("SEPA", scheme.Element(Ns + "Cd")!.Value);
+        Assert.Null(scheme.Element(Ns + "Prtry"));
+    }
+
+    [Fact]
     public void Writes_sepa_service_level_and_core_local_instrument()
     {
         XDocument doc = XDocument.Parse(global::PainNet.Pain.WriteDirectDebit(Fixtures.TwoTransactionDirectDebit()));

@@ -10,9 +10,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <PackageId>Pain.Net</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Israel Iyonsi</Authors>
-    <Description>Maintained, tested, zero-dependency ISO 20022 SEPA payment-initiation library for .NET. Writes pain.001.001.09 (customer credit transfer) and pain.008.001.08 (customer direct debit), reads pain.001.001.09 back, and auto-computes and validates NbOfTxs and CtrlSum so silent totals bugs cannot ship.</Description>
+    <Description>Maintained, tested, zero-dependency ISO 20022 SEPA payment-initiation library for .NET. Reads and writes both pain.001.001.09 (customer credit transfer) and pain.008.001.08 (customer direct debit), and auto-computes and validates NbOfTxs and CtrlSum so silent totals bugs cannot ship.</Description>
     <PackageTags>iso20022;sepa;pain001;pain008;credit-transfer;direct-debit;payments;xml;fintech;payment-initiation;sepawriter</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

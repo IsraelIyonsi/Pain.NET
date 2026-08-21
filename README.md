@@ -1,6 +1,6 @@
 # Pain.Net
 
-Maintained, tested, zero-dependency ISO 20022 SEPA payment-initiation for .NET. Generate **and** parse `pain.001.001.09` (customer credit transfer) and `pain.008.001.08` (customer direct debit), with `NbOfTxs` and `CtrlSum` computed for you on write and re-validated on read.
+Maintained, tested, zero-dependency ISO 20022 SEPA payment-initiation for .NET. Reads **and** writes both `pain.001.001.09` (customer credit transfer) and `pain.008.001.08` (customer direct debit), with `NbOfTxs` and `CtrlSum` computed for you on write and re-validated on read.
 
 [![NuGet](https://img.shields.io/nuget/v/Pain.Net.svg)](https://www.nuget.org/packages/Pain.Net) &nbsp; MIT &nbsp; Zero dependencies &nbsp; Native AOT clean
 
@@ -61,14 +61,30 @@ string xml = Pain.WriteDirectDebit(debit);
 
 ## Read one back
 
+Both messages read back into the typed model, re-validating `NbOfTxs` and `CtrlSum` on the way in.
+
 ```csharp
-CreditTransfer parsed = Pain.ReadCreditTransfer(xml);
+CreditTransfer parsedTransfer = Pain.ReadCreditTransfer(xml);
+DirectDebit parsedDebit = Pain.ReadDirectDebit(xml);
 
 // Or non-throwing:
-if (Pain.TryReadCreditTransfer(xml, out CreditTransfer? maybe))
+if (Pain.TryReadCreditTransfer(xml, out CreditTransfer? maybeTransfer))
 {
-    // maybe is populated and validated
+    // maybeTransfer is populated and validated
 }
+
+if (Pain.TryReadDirectDebit(xml, out DirectDebit? maybeDebit))
+{
+    // maybeDebit is populated and validated
+}
+```
+
+## Creditor scheme-name form
+
+Some banks expect the SEPA creditor scheme name as a proprietary value (`SchmeNm/Prtry`, the default) and others as a code (`SchmeNm/Cd`). Both carry `SEPA`. Select the code form when your bank requires it:
+
+```csharp
+string xml = Pain.WriteDirectDebit(debit, SchemeNameForm.Code);
 ```
 
 ## The `NbOfTxs` / `CtrlSum` guarantee
@@ -78,7 +94,7 @@ Two fields cause more rejected SEPA files than any other: the transaction count 
 `Pain.Net` closes that gap from both sides:
 
 - **On write**, `NbOfTxs` and `CtrlSum` are always computed from the transactions themselves, in both the group header and each payment block. A caller-supplied total is never trusted, because there is no way to supply one.
-- **On read**, the stated `NbOfTxs` and `CtrlSum` are recomputed from the parsed transactions and compared. If either disagrees, `ReadCreditTransfer` throws `PainValidationException` (and `TryReadCreditTransfer` returns `false`). That mismatch is exactly the bug this catches.
+- **On read**, the stated `NbOfTxs` and `CtrlSum` are recomputed from the parsed transactions and compared, for both messages. If either disagrees, the reader throws `PainValidationException` (and the `TryRead` variant returns `false`). That mismatch is exactly the bug this catches.
 
 All money is `decimal`, formatted invariant with two decimals and a `Ccy` attribute. `CreationDateTime` is caller-supplied and written as ISO 8601, so output is deterministic and testable.
 
@@ -89,7 +105,8 @@ Every claim here is backed by the xUnit suite, which runs in seconds:
 - Credit-transfer writer produces one `PmtInf`, the right number of `CdtTrfTxInf`, the correct IBANs and amounts, and `NbOfTxs` / `CtrlSum` equal to the exact decimal sum.
 - Full round-trip: write then read recovers the message id, transaction count, and per-transaction end-to-end id, amount, and creditor IBAN.
 - Tamper tests: corrupting `CtrlSum` or `NbOfTxs` in valid XML makes the reader throw `PainValidationException`.
-- Direct-debit writer emits the right totals, mandate ids, signature dates, and SEPA `SEPA` / `CORE` codes.
+- Direct-debit writer emits the right totals, mandate ids, signature dates, and SEPA `SEPA` / `CORE` codes, in either `SchmeNm/Prtry` or `SchmeNm/Cd` form.
+- Direct-debit round-trip: write then read recovers the message id, creditor scheme id, and every per-transaction field, including mandate id and signature date; tampering with `CtrlSum` or `NbOfTxs` makes the reader throw.
 - Guard rails: empty `MessageId`, empty `EndToEndId`, empty `MandateId`, or a non-positive amount throw `ArgumentException`.
 - Structural: the root is `Document` in the `pain.001.001.09` namespace URN with a `CstmrCdtTrfInitn` child.
 
@@ -99,8 +116,8 @@ Every claim here is backed by the xUnit suite, which runs in seconds:
 - The agents that SEPA makes mandatory are required and always emitted: the debtor and creditor BICs (`DbtrAgt` / `CdtrAgt`), and for direct debits the creditor identifier (`CreditorSchemeId`, written as `CdtrSchmeId`). Empty values are rejected with `ArgumentException`.
 - IBAN, BIC, and creditor identifier are passed through as strings and are **not** format-validated here beyond the non-empty check. Validate their structure with a dedicated library before serializing.
 - Amounts must have at most two decimal places; more are rejected with `ArgumentException`. Money is `decimal` throughout, formatted invariant with two decimals.
-- `CreationDateTime` is written with its UTC offset (`yyyy-MM-ddTHH:mm:sszzz`) and round-trips exactly; the reader also accepts the offset-less form.
-- The reader is provided for the credit-transfer message (`ReadCreditTransfer` / `TryReadCreditTransfer`), and validates both group-level and per-`PmtInf` `NbOfTxs` / `CtrlSum`; the direct-debit side is write-only in this release.
+- `CreationDateTime` is written with its UTC offset and round-trips exactly. Sub-second precision is preserved when present (`yyyy-MM-ddTHH:mm:ss.FFFFFFFzzz`); a whole-second timestamp is written without a decimal point. The reader also accepts the offset-less form.
+- Readers are provided for both messages (`ReadCreditTransfer` / `TryReadCreditTransfer` and `ReadDirectDebit` / `TryReadDirectDebit`), and each validates both group-level and per-`PmtInf` `NbOfTxs` / `CtrlSum`. A missing `Ccy` attribute on an amount is rejected with `PainValidationException`.
 - Other optional SEPA elements not modelled include ultimate parties and batch-booking flags. Add them if your bank requires them.
 - XML is produced schema-shaped in the correct element order with an explicit UTF-8 declaration and no byte-order mark; it is not validated against the official XSD at runtime.
 

@@ -55,6 +55,40 @@ public class RoundTripAndValidationTests
     }
 
     [Fact]
+    public void Round_trip_preserves_fractional_seconds_in_creation_date_time()
+    {
+        CreditTransfer original = Fixtures.TwoTransactionCreditTransfer() with
+        {
+            CreationDateTime = new DateTimeOffset(2024, 3, 1, 9, 30, 15, 250, TimeSpan.FromHours(2)),
+        };
+
+        string xml = global::PainNet.Pain.WriteCreditTransfer(original);
+        Assert.Contains("2024-03-01T09:30:15.25", xml);
+
+        CreditTransfer parsed = global::PainNet.Pain.ReadCreditTransfer(xml);
+        Assert.Equal(original.CreationDateTime, parsed.CreationDateTime);
+        Assert.Equal(original.CreationDateTime.Offset, parsed.CreationDateTime.Offset);
+    }
+
+    [Fact]
+    public void Whole_second_creation_date_time_is_written_without_a_decimal_point()
+    {
+        string xml = global::PainNet.Pain.WriteCreditTransfer(Fixtures.TwoTransactionCreditTransfer());
+
+        Assert.Contains("<CreDtTm>2024-03-01T09:30:00+00:00</CreDtTm>", xml);
+    }
+
+    [Fact]
+    public void Missing_currency_attribute_throws_pain_validation_exception()
+    {
+        string xml = global::PainNet.Pain.WriteCreditTransfer(Fixtures.TwoTransactionCreditTransfer());
+        XDocument doc = XDocument.Parse(xml);
+        doc.Descendants(Ns + "InstdAmt").First().Attribute("Ccy")!.Remove();
+
+        Assert.Throws<PainValidationException>(() => global::PainNet.Pain.ReadCreditTransfer(doc.ToString()));
+    }
+
+    [Fact]
     public void Tampered_payment_control_sum_throws_pain_validation_exception()
     {
         string xml = global::PainNet.Pain.WriteCreditTransfer(Fixtures.TwoTransactionCreditTransfer());

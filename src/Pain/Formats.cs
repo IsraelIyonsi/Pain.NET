@@ -11,10 +11,24 @@ internal static class Formats
 {
     internal const string MoneyFormat = "F2";
     internal const string DateFormat = "yyyy-MM-dd";
-    internal const string DateTimeFormat = "yyyy-MM-ddTHH:mm:sszzz";
-    internal const string DateTimeFormatNoOffset = "yyyy-MM-ddTHH:mm:ss";
 
-    internal static readonly string[] DateTimeReadFormats = { DateTimeFormat, DateTimeFormatNoOffset };
+    // The "F" (uppercase) fractional-second specifiers preserve sub-second precision when
+    // present and drop the decimal separator entirely when the time is on a whole second,
+    // so a plain timestamp still round-trips to the exact same string it was read from.
+    internal const string DateTimeWriteFormat = "yyyy-MM-ddTHH:mm:ss.FFFFFFFzzz";
+
+    private const string DateTimeOffsetFraction = "yyyy-MM-ddTHH:mm:ss.FFFFFFFzzz";
+    private const string DateTimeOffsetSecond = "yyyy-MM-ddTHH:mm:sszzz";
+    private const string DateTimeNoOffsetFraction = "yyyy-MM-ddTHH:mm:ss.FFFFFFF";
+    private const string DateTimeNoOffsetSecond = "yyyy-MM-ddTHH:mm:ss";
+
+    internal static readonly string[] DateTimeReadFormats =
+    {
+        DateTimeOffsetFraction,
+        DateTimeOffsetSecond,
+        DateTimeNoOffsetFraction,
+        DateTimeNoOffsetSecond,
+    };
 
     internal static string Money(decimal amount) =>
         amount.ToString(MoneyFormat, CultureInfo.InvariantCulture);
@@ -26,11 +40,14 @@ internal static class Formats
         int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture);
 
     internal static string DateTime(DateTimeOffset value) =>
-        value.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+        value.ToString(DateTimeWriteFormat, CultureInfo.InvariantCulture);
 
     internal static string Date(DateTimeOffset value) =>
         value.ToString(DateFormat, CultureInfo.InvariantCulture);
 
     internal static string Date(DateOnly value) =>
         value.ToString(DateFormat, CultureInfo.InvariantCulture);
+
+    internal static DateOnly ParseDate(string text) =>
+        DateOnly.ParseExact(text, DateFormat, CultureInfo.InvariantCulture);
 }
