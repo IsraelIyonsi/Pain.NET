@@ -109,6 +109,7 @@ public static class Pain
         XElement transactions = new(ns + Names.PaymentInformation,
             new XElement(ns + Names.PaymentInformationId, debit.MessageId),
             new XElement(ns + Names.PaymentMethod, Names.PaymentMethodDirectDebit),
+            new XElement(ns + Names.BatchBooking, debit.BatchBooking.ToString().ToLower()),
             new XElement(ns + Names.NumberOfTransactions, count),
             new XElement(ns + Names.ControlSum, Formats.Money(controlSum)),
             new XElement(ns + Names.PaymentTypeInformation,
@@ -116,8 +117,8 @@ public static class Pain
                     new XElement(ns + Names.Code, Names.ServiceLevelSepa)),
                 new XElement(ns + Names.LocalInstrument,
                     new XElement(ns + Names.Code, Names.LocalInstrumentCore)),
-                new XElement(ns + Names.SequenceType, Names.SequenceTypeRecurring)),
-            new XElement(ns + Names.RequestedCollectionDate, Formats.Date(debit.CreationDateTime)),
+                new XElement(ns + Names.SequenceType, GetSequenceName(debit.SequenceType))),
+            new XElement(ns + Names.RequestedCollectionDate, Formats.Date(debit.RequestedCollectionDate != null ?  new DateTimeOffset(debit.RequestedCollectionDate.Value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : debit.CreationDateTime)),
             new XElement(ns + Names.Creditor, new XElement(ns + Names.Name, debit.Creditor.Name)),
             Account(ns, Names.CreditorAccount, debit.CreditorIban),
             Agent(ns, Names.CreditorAgent, debit.CreditorBic),
@@ -362,6 +363,26 @@ public static class Pain
 
     private static string SchemeNameElement(SchemeNameForm schemeNameForm) =>
         schemeNameForm == SchemeNameForm.Code ? Names.Code : Names.Proprietary;
+
+    private static string GetSequenceName(SequenceTypes sequenceType)
+    {
+        switch (sequenceType)
+        {
+            case SequenceTypes.First:
+                return Names.SequenceTypeFirst;
+                break;
+            case SequenceTypes.OneOff:
+                return Names.SequenceTypeOneOff;
+                break;
+            case SequenceTypes.Final:
+                return Names.SequenceTypeFinal;
+                break;
+            case SequenceTypes.Recurring:
+            default:
+                return Names.SequenceTypeRecurring;
+                break;
+        }
+    }
 
     private static XElement? Remittance(XNamespace ns, string? remittanceInfo) =>
         string.IsNullOrWhiteSpace(remittanceInfo)

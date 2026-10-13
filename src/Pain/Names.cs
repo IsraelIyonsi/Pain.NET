@@ -18,7 +18,10 @@ internal static class Names
     // Fixed SEPA code words.
     internal const string ServiceLevelSepa = "SEPA";
     internal const string LocalInstrumentCore = "CORE";
+    internal const string SequenceTypeFirst = "FRST";
     internal const string SequenceTypeRecurring = "RCUR";
+    internal const string SequenceTypeOneOff = "OOFF";
+    internal const string SequenceTypeFinal = "FNAL";
     internal const string PaymentMethodCreditTransfer = "TRF";
     internal const string PaymentMethodDirectDebit = "DD";
     internal const string ChargeBearerSlev = "SLEV";
@@ -38,6 +41,7 @@ internal static class Names
     internal const string InitiatingParty = "InitgPty";
     internal const string PaymentInformationId = "PmtInfId";
     internal const string PaymentMethod = "PmtMtd";
+    internal const string BatchBooking = "BtchBookg";
     internal const string PaymentTypeInformation = "PmtTpInf";
     internal const string ServiceLevel = "SvcLvl";
     internal const string LocalInstrument = "LclInstrm";

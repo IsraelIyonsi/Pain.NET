@@ -11,6 +11,9 @@ namespace PainNet;
 /// <param name="CreditorBic">The creditor agent BIC. Required, because pain.008.001.08 makes <c>CdtrAgt</c> mandatory. Passed through verbatim; not otherwise validated here.</param>
 /// <param name="CreditorSchemeId">The SEPA creditor identifier (<c>CdtrSchmeId</c>). Required for SEPA CORE direct debits. Passed through verbatim; not otherwise validated here.</param>
 /// <param name="Transactions">The individual direct-debit transactions. Must contain at least one.</param>
+/// <param name="BatchBooking">Indicate batch booking.</param>
+/// <param name="SequenceType">The sequence type (default is RCUR)</param>
+/// <param name="RequestedCollectionDate">Date when the direct debit shall be collected.</param>
 public sealed record DirectDebit(
     string MessageId,
     DateTimeOffset CreationDateTime,
@@ -18,7 +21,10 @@ public sealed record DirectDebit(
     string CreditorIban,
     string CreditorBic,
     string CreditorSchemeId,
-    IReadOnlyList<DirectDebitTransaction> Transactions);
+    IReadOnlyList<DirectDebitTransaction> Transactions,
+    bool BatchBooking = false,
+    SequenceTypes SequenceType = SequenceTypes.Recurring,
+    DateOnly ? RequestedCollectionDate = null);
 
 /// <summary>
 /// A single direct-debit transaction within a <see cref="DirectDebit"/>.
